@@ -6,7 +6,7 @@ from requests.utils import default_headers
 import unittest 
 import json
 
-from spaceknow.errors import SpaceknowApiException, UnexpectedResponseException
+from spaceknow.errors import SpaceknowApiException, TaskingException, UnexpectedResponseException
 
 class TestAuthorizedSession(unittest.TestCase):
     VALID_TOKEN = 'abcdefghijklmnopqrzstuv.123456789'
@@ -31,21 +31,22 @@ class TestAuthorizedSession(unittest.TestCase):
         self.assertDictEqual(dict(expectedHeader), dict(actualHeader))
 
 
+
+def generate_mocked_session_request(response_text: str):        
+    def mocked_session_request(self, method, url,
+        params=None, data=None, headers=None, cookies=None, files=None,
+        auth=None, timeout=None, allow_redirects=True, proxies=None,
+        hooks=None, stream=None, verify=None, cert=None, json=None):
+        respone = Response()
+        respone._content = bytes(response_text, 'utf-8')
+        return respone
+    return mocked_session_request
+
 class TestSpaceknowApi(unittest.TestCase):
     VALID_RESPONSE_BODY = '{"type": "json", "color": "red", "name": "John"}'
     AUTH_ERROR_RESPONSE_BODY = '{"error": "NOT-AUTHORIZED", "errorMessage": "You are not authorized."}'
     INVALID_RESPONSE_BODY = 'INVALID RESPONSE NOT JSON PARSABLE'
 
-
-    def generate_mocked_session_request(response_text: str):        
-        def mocked_session_request(self, method, url,
-            params=None, data=None, headers=None, cookies=None, files=None,
-            auth=None, timeout=None, allow_redirects=True, proxies=None,
-            hooks=None, stream=None, verify=None, cert=None, json=None):
-            respone = Response()
-            respone._content = bytes(response_text, 'utf-8')
-            return respone
-        return mocked_session_request
 
     @patch('requests.Session.request', generate_mocked_session_request(VALID_RESPONSE_BODY))
     def test_call_valid_response(self):
@@ -83,22 +84,32 @@ class TestSpaceknowApi(unittest.TestCase):
 
 
 
-# class TestTaskingObject(unittest.TestCase):
-#     PIPELINE_ID = '123456789'
+class TestTaskingObject(unittest.TestCase):
+    PIPELINE_ID = '123456789'
+    TASKIN_ERROR_TEXT = '{"error": "NON-EXISTENT-PIPELINE", "errorMessage": "Pipeline is not existent!"}'
+    def mocked_call_valid_response(self, method, api_endpoint, json_body):
+        return {
+            'status': random.choice([s.name for s in list(TaskingStatus)]),
+            'nextTry': str(random.randint(1, 15))
+        }
+   
+    @patch('spaceknow.api.SpaceknowApi.call', mocked_call_valid_response)
+    def test_get_status_valid_response(self):
+        session = AuthorizedSession('someToken')
+        taskObject = TaskingObject(session, self.PIPELINE_ID, None)
 
-#     def mocked_AuthorizedSession_call_sends_vali_tasking_status(self, method, api_endpoint, json_body):
-#         response = Response()
-#         content_str = '{"status": "'+  random.choice(list(TaskingStatus)).name  +'", "'+ str(random.randint(1,15)) +'": 15}'
-#         response._content = bytes(content_str, 'utf-8')
-#         return response
-    
-#     @patch('spaceknow.api.SpaceknowApi.call', mocked_AuthorizedSession_call_sends_vali_tasking_status)
-#     def test_get_status(self):
-#         session = AuthorizedSession('someToken')
-#         taskObject = TaskingObject(session, self.PIPELINE_ID, None)
+        status, nexTry = taskObject.get_status()
+        self.assertIn(status, list(TaskingStatus))
 
-#         status, nexTry = taskObject.get_status()
-#         self.assertEqual(status, 'dasd')
+    @patch('requests.Session.request', generate_mocked_session_request(TASKIN_ERROR_TEXT))
+    def test_get_status_taskin_error(self):
+        session = AuthorizedSession('someToken')
+        taskObject = TaskingObject(session, self.PIPELINE_ID, None)
+
+        with self.assertRaises(TaskingException):
+            status, nexTry = taskObject.get_status()
+
+
     
 
 

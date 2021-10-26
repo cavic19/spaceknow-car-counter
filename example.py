@@ -47,6 +47,3 @@ data = taskObject.retrieve_data()
 
 print(data)
 print('Finished')
-
-
-
