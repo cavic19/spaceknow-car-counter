@@ -176,3 +176,6 @@ class TestRagnarApi(unittest.TestCase):
             ragnar.retrieve_results('pipeline-id')        
 
 
+
+class TestKrakenApi(unittest.TestCase):
+    pass
