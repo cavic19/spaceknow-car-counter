@@ -1,7 +1,7 @@
 from geojson import Polygon
 from datetime import datetime
 from spaceknow.authorization import AuthorizationService
-from spaceknow.api import AuthorizedSession, RagnarApi, TaskingObject, TaskingStatus
+from spaceknow.api import AuthorizedSession, KrakenApi, RagnarApi, TaskingObject, TaskingStatus
 from time import sleep
 
 
@@ -35,15 +35,28 @@ session = AuthorizedSession(token)
 ragnarApi = RagnarApi(session)
 
 print('Initiating search')
-taskObject = ragnarApi.initiate_search(testAirportPolygon,startDateTime,endDateTime)
-status, nextTry = taskObject.get_status()
+ragnar_tast_obj = ragnarApi.initiate_search(testAirportPolygon,startDateTime,endDateTime)
+status, nextTry = ragnar_tast_obj.get_status()
 while status == TaskingStatus.PROCESSING:
     print(status)
     sleep(nextTry)
-    status, nextTry = taskObject.get_status()
+    status, nextTry = ragnar_tast_obj.get_status()
 
-print('Procedure finisged with status: ', status.name)
-data = taskObject.retrieve_data()
-
+print('Ragnar finished with status: ', status.name)
+data = ragnar_tast_obj.retrieve_data()
 print(data)
+
+
+scene_ids = list(data.keys())
+krakenApi = KrakenApi(session)
+print('Initiating kraken analysis')
+kraken_task_obj = krakenApi.initiate_car_analysis(testAirportPolygon,scene_ids[0])
+status, nextTry = kraken_task_obj.get_status()
+while status == TaskingStatus.PROCESSING:
+    print(status)
+    sleep(nextTry)
+    status, nextTry = ragnar_tast_obj.get_status()
+print('Kraken finished with status: ', status.name)
+kraken_data = kraken_task_obj.retrieve_data()
+print(kraken_data)
 print('Finished')

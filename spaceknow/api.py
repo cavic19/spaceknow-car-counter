@@ -164,7 +164,7 @@ class KrakenApi(SpaceknowApi):
     RELEASE_PATH = '/kraken/release'
     CARS_PATH = '/cars'
     IMAGERY_PATH = '/imagery'
-    INITITATE_ENDPOINT = '/geojson/inititate'
+    INITITATE_ENDPOINT = '/geojson/initiate'
     RETRIEVE_ENDPOINT = '/geojson/retrieve'
 
     def initiate_car_analysis(self, extent: GeoJSON, scene_id: str) -> TaskingObject:
