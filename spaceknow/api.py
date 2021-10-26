@@ -37,12 +37,12 @@ class SpaceknowApi:
             self.__check_for_errors(response_json)
             return response_json
         except ValueError as ex:
-            raise UnexpectedResponseException(response.content) from ex
+            raise UnexpectedResponseException(response) from ex
 
     def __check_for_errors(self, response: dict) -> None:
         if self.__is_call_failure(response):
             error_type = response['error']
-            error_message = response['errorMessage']
+            error_message = response.get('errorMessage', '')
             raise SpaceknowApiException(error_type, error_message)
 
     def __is_call_failure(self, response: dict) -> bool:
