@@ -30,9 +30,9 @@ class AuthorizationException(Exception):
         super().__init__(message)   
 
 class UnexpectedResponseException(Exception):
-    def __init__(self, actual_response: Response):
-        self.actual_response = actual_response
-        super().__init__(actual_response.content)
+    def __init__(self, actual_response_message):
+        self.actual_response = actual_response_message
+        super().__init__(actual_response_message)
 
 class SpaceknowApiException(Exception):
     def __init__(self, error_type: str, error_message: str):

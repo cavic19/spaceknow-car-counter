@@ -5,7 +5,7 @@ from geojson import GeoJSON
 from datetime import datetime
 from enum import Enum, auto
 from typing import Callable
-
+import area
 
 POST_METHOD = 'POST'
 GET_METHOD = 'GET'
@@ -37,7 +37,7 @@ class SpaceknowApi:
             self.__check_for_errors(response_json)
             return response_json
         except ValueError as ex:
-            raise UnexpectedResponseException(response) from ex
+            raise UnexpectedResponseException(response.text) from ex
 
     def __check_for_errors(self, response: dict) -> None:
         if self.__is_call_failure(response):
@@ -123,6 +123,8 @@ class RagnarApi(SpaceknowApi):
         Args:
             extent (GeoJSON): Desired area to obtain satelite images for.
         """
+        self.__check_extents_validity(extent)
+        self.__check_dates_validity(fromDateTime, toDateTime)  
         json_body = {
             'provider': imagesProvider,
             'dataset': dataset,
@@ -136,14 +138,28 @@ class RagnarApi(SpaceknowApi):
             return TaskingObject(self._session, pipeline_id, lambda: self.retrieve_results(pipeline_id))
         except KeyError as ex:
             raise UnexpectedResponseException(response) from ex
-        
+
+    def __check_dates_validity(self, fromDateTime: datetime, toDateTime: datetime):
+        if fromDateTime > toDateTime:
+            raise ValueError('toDateTime argument cant precede fromToDateTime')
+    
+    def __check_extents_validity(self, extent: GeoJSON) -> None:
+        if area.area(extent) == 0:
+            raise ValueError("Extent's area can't be 0!")
+
+    
     def retrieve_results(self, pipeline_id) -> dict:
-        response = self.call(POST_METHOD, self.RETRIEVE_ENDPOINT,{'pipelineId': pipeline_id})
+        """Returns processed data ..."""
+        response = None
         try:
+            response = self.call(POST_METHOD, self.RETRIEVE_ENDPOINT,{'pipelineId': pipeline_id})
             results = response['results']
             dates = [datetime.strptime(r['datetime'], self.TIME_FORMAT)for r in results]
             scenes = [r['sceneId'] for r in results ]
             return dict(zip(scenes,dates))
+        except SpaceknowApiException as ex:
+            if ex.error_type in [TaskingError.NON_EXISTENT_PIPELINE, TaskingError.PIPELINE_NOT_PROCESSED]:
+                raise TaskingException(ex.error_type, ex.error_message)
         except KeyError as ex:
             raise UnexpectedResponseException(response) from ex
 

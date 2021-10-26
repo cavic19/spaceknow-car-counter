@@ -1,10 +1,12 @@
+from datetime import datetime
 from unittest .mock import patch
 import random
 from requests.models import Response
-from spaceknow.api import AuthorizedSession, SpaceknowApi, TaskingObject, TaskingStatus
+from spaceknow.api import AuthorizedSession, RagnarApi, SpaceknowApi, TaskingObject, TaskingStatus
 from requests.utils import default_headers
 import unittest 
 import json
+import geojson
 
 from spaceknow.errors import SpaceknowApiException, TaskingException, UnexpectedResponseException
 
@@ -79,7 +81,7 @@ class TestSpaceknowApi(unittest.TestCase):
             spaceknowApi.call('POST', '/endpoint', {'test': '123456'})
         
         expected_response = self.INVALID_RESPONSE_BODY
-        actual_response = ctx.exception.actual_response.text
+        actual_response = ctx.exception.actual_response
         self.assertEqual(expected_response, actual_response)
 
 
@@ -110,7 +112,67 @@ class TestTaskingObject(unittest.TestCase):
             status, nexTry = taskObject.get_status()
 
 
+class TestRagnarApi(unittest.TestCase):
+    INVALID_RESPONSE = '{"key": "unexpected", "anotherKey": "unexpected too"}'
+    VALID_INITIATE_RESPONSE = '{"pipelineId": "123456789abc"}'
+    VALID_RETRIEVE_RESPONSE = '{"results": [{"sceneId": "123456789abc", "datetime":"2021-10-26 22:34:42"}]}'
     
+    def test_initiate_search_of_point_should_throw(self):
+        point = geojson.Point((125,125))
+        session = AuthorizedSession('valid-token')
+        ragnar = RagnarApi(session)
 
+        with self.assertRaises(ValueError):
+            ragnar.initiate_search(point,None,None)
+
+    @patch('requests.Session.request', generate_mocked_session_request(VALID_INITIATE_RESPONSE))
+    def test_initiate_search_of_polygon_should_pass(self):
+        polygon = geojson.Polygon([[(1,1), (2,2), (3,3), (1,1)]])
+        session = AuthorizedSession('valid-token')
+        ragnar = RagnarApi(session)
+        fromDate = datetime(2021,10,26)
+        toDate = datetime(2021,10,27)
+
+        ragnar.initiate_search(polygon,fromDate,toDate)     
+
+
+    def test_iitiate_search_wrong_datetime_arguments_should_throw(self):
+        polygon = geojson.Polygon([[(1,1), (2,2), (3,3), (1,1)]])
+        session = AuthorizedSession('valid-token')
+        ragnar = RagnarApi(session)
+        fromDate = datetime(2021,10,27)
+        toDate = datetime(2021,10,26)
+        with self.assertRaises(ValueError):
+            ragnar.initiate_search(polygon, fromDate, toDate)
+
+    @patch('requests.Session.request', generate_mocked_session_request(VALID_RETRIEVE_RESPONSE))
+    def test_retrieve_results_should_equal(self):
+        session = AuthorizedSession('valid-token')
+        ragnar = RagnarApi(session)
+        expectedResponse = json.loads(self.VALID_RETRIEVE_RESPONSE)['results'][0]
+        
+        
+        expectedResult = {
+            expectedResponse['sceneId']: datetime.strptime(expectedResponse['datetime'], RagnarApi.TIME_FORMAT)
+        }
+        actualResult = ragnar.retrieve_results('valid-pipeline-id')
+
+        self.assertDictEqual(expectedResult, actualResult)
+
+    @patch('requests.Session.request', generate_mocked_session_request(INVALID_RESPONSE))
+    def test_retrieve_results_invalid_response_should_throw(self):
+        session = AuthorizedSession('valid-token')
+        ragnar = RagnarApi(session)
+
+        with self.assertRaises(UnexpectedResponseException):
+            ragnar.retrieve_results('valid-pipeline')
+
+    @patch('requests.Session.request', generate_mocked_session_request(TestTaskingObject.TASKIN_ERROR_TEXT))
+    def test_retrieve_results_tasking_error_should_throw(self):
+        session = AuthorizedSession('valid-token')
+        ragnar = RagnarApi(session)
+
+        with self.assertRaises(TaskingException):
+            ragnar.retrieve_results('pipeline-id')        
 
 
