@@ -1,7 +1,7 @@
 from geojson import Polygon
 from datetime import datetime
-from authorization import AuthorizationService
-from api import AuthorizedSession, RagnarApi, TaskingObject, TaskingStatus
+from spaceknow.authorization import AuthorizationService
+from spaceknow.api import AuthorizedSession, RagnarApi, TaskingObject, TaskingStatus
 from time import sleep
 
 

@@ -1,50 +1,51 @@
 from requests import Session
-from abc import ABC, abstractmethod
-from models import Client
+from spaceknow.errors import  AuthenticationException, UnexpectedResponseException
 
+AUTH0_DOMAIN = 'https://spaceknow.auth0.com'
 
+class AuthorizationService:
+    """Service providing authorization via JWT"""
+    DEFAULT_CONNECTION = 'Username-Password-Authentication'
+    DEFAULT_GRANT_TYPE = 'password'
+    DEFAULT_SCOPE = 'openid'
 
-class Auth0Exception(Exception):
-    def __init__(self, message):
-        super().__init__(message)
+    ENDPOINT = '/oauth/ro'
 
+    def __init__(self, client_id, session: Session = None):
+        self.__client_id =  client_id
+        self.__session = session or Session()
 
-class JWTRequester(ABC):
-    @abstractmethod
-    def RequestAuthToken(self,client: Client) -> str:
+    def request_jwt(self, username:str, password: str) -> str:
+        """ Authenticates user with giver username and password and if successed returns jwt else throws AuthenticationException
+
+        Args:
+            username (str): User's name against which the authentication is done
+            password (str): User's password against which the authentication is done]
+
+        Returns:
+            str: json web token
+        """
         pass
-
-class Auth0JWTRequester(JWTRequester):
-    AUTH0_API_ENDPOINT = '/oauth/token'
-    
-    def __init__(self,clientId: str, auth0Domain: str, session: Session = None):
-        self.__clientId = clientId
-        self.__auth0Domain = auth0Domain
-        self.__session = session if session is not None else Session()
-    
-    def RequestAuthToken(self, client: Client) -> str:
-        response = self.__session.request(
-            'POST',
-            url=self.__buildRequestUrl(), 
-            json=self.__buildRequestBody(client))
-        if 'application/json' in response.headers['Content-Type']:
-            response_json = response.json()
-            if 'error' in response_json:
-                self.__handleErrors(response_json['error'], response_json['error_description'])
-            return response_json['id_token']
-            
-    def __buildRequestUrl(self) -> str:
-        return f"{self.__auth0Domain}{self.AUTH0_API_ENDPOINT}"
-
-    def __buildRequestBody(self, user: Client) -> dict:
-        return {
-            'client_id': self.__clientId,
-            'username': user.username,
-            'password': user.password,
-            'connection': 'Username-Password-Authentication',
-            'grant_type': 'password',
-            'scope': 'openid'
+        body_json = {
+            'client_id': self.__client_id,
+            'username': username,
+            'password': password,
+            'connection': self.DEFAULT_CONNECTION,
+            'grant_type': self.DEFAULT_GRANT_TYPE,
+            'scope': self.DEFAULT_SCOPE
         }
-    def __handleErrors(self, errorType:str,errorMessage:str):
-        raise Auth0Exception(f'{errorType}: {errorMessage}.')
+        url = AUTH0_DOMAIN + self.ENDPOINT
+        response = self.__session.post(url=url, json=body_json)      
+        try:
+            return response.json()['id_token']
+        except ValueError:
+            raise UnexpectedResponseException(response)
+        except KeyError:
+            if 'error' in response.json():
+                error_type = response.json()['error']
+                error_message = response.json()['error_description']
+                raise AuthenticationException(f'{error_type}: {error_message}.')
+            else:
+                raise UnexpectedResponseException(response)
+    
 
