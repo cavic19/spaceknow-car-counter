@@ -3,7 +3,7 @@ from requests import Session, Response
 from spaceknow.errors import UnexpectedResponseException,ApiError, AuthorizationException, SpaceknowApiException,TaskingError, TaskingException
 from geojson import GeoJSON
 from datetime import datetime
-from spaceknow.models import TaskingStatus, GeoJSONExtentValidator
+from spaceknow.models import TaskingStatus, GeoJSONExtentValidator, Tiles
 from typing import Callable, TypeVar
 import area
 
@@ -100,8 +100,15 @@ class TaskingObject(SpaceknowApi):
             return super().call(method,api_endpoint,json_body)
         except SpaceknowApiException as ex:
             if ex.error_type in [TaskingError.NON_EXISTENT_PIPELINE, TaskingError.PIPELINE_NOT_PROCESSED]:
-                raise TaskingException(ex.error_type, ex.error_message)
+                raise TaskingException(ex.error_type, ex.error_message) from ex
             raise
+
+
+class KrakenTaskingObject(TaskingObject):
+    def __init__(self, session: AuthorizedSession, pipeline_id: str, on_success: Callable[[], Tiles]):
+        super().__init__(session, pipeline_id, on_success)
+    def retrieve_data(self) -> Tiles:
+        return super().retrieve_data()
 
 
 class RagnarApi(SpaceknowApi):
@@ -153,7 +160,7 @@ class RagnarApi(SpaceknowApi):
             return dict(zip(scenes,dates))
         except SpaceknowApiException as ex:
             if ex.error_type in [TaskingError.NON_EXISTENT_PIPELINE, TaskingError.PIPELINE_NOT_PROCESSED]:
-                raise TaskingException(ex.error_type, ex.error_message)
+                raise TaskingException(ex.error_type, ex.error_message) from ex
             raise
         except KeyError as ex:
             raise UnexpectedResponseException(response) from ex
@@ -167,13 +174,13 @@ class KrakenApi(SpaceknowApi):
     INITITATE_ENDPOINT = '/geojson/initiate'
     RETRIEVE_ENDPOINT = '/geojson/retrieve'
 
-    def initiate_car_analysis(self, extent: GeoJSON, scene_id: str) -> TaskingObject:
+    def initiate_car_analysis(self, extent: GeoJSON, scene_id: str) -> KrakenTaskingObject:
         return self.__initiate_analysis(extent,scene_id, self.CARS_PATH)
 
-    def initiate_imagery_analysis(self, extent: GeoJSON, scene_id: str) -> TaskingObject:
+    def initiate_imagery_analysis(self, extent: GeoJSON, scene_id: str) -> KrakenTaskingObject:
         return self.__initiate_analysis(extent, scene_id, self.IMAGERY_PATH)
 
-    def __initiate_analysis(self, extent: GeoJSON, scene_id: str, middle_path: str) -> TaskingObject:
+    def __initiate_analysis(self, extent: GeoJSON, scene_id: str, middle_path: str) -> KrakenTaskingObject:
         self._extent_validator.validate(extent)
         body_json = {
             'sceneId': scene_id,
@@ -182,21 +189,31 @@ class KrakenApi(SpaceknowApi):
         endpoint = self.RELEASE_PATH + middle_path + self.INITITATE_ENDPOINT
         response = self.call(POST_METHOD, endpoint, body_json)
         pipeline_id = self._try_get('pipelineId', response)
-        return TaskingObject(self._session, pipeline_id, lambda: self.__retrieve_analysis(pipeline_id, middle_path))
+        return KrakenTaskingObject(self._session, pipeline_id, lambda: self.__retrieve_analysis(pipeline_id, middle_path))
 
 
-    def __retrieve_analysis(self, pipeline_id: str, middle_path: str) -> dict:
+    def __retrieve_analysis(self, pipeline_id: str, middle_path: str) -> Tiles:
         try:
             endpoint = self.RELEASE_PATH + middle_path + self.RETRIEVE_ENDPOINT
             body_json = {'pipelineId': pipeline_id}
             response = self.call(POST_METHOD, endpoint, body_json)
             map_id = self._try_get('mapId', response)
             tiles = self._try_get('tiles', response)
-            return {'mapId': map_id, 'tiles': tiles}
+            return Tiles(map_id, tiles)
         except SpaceknowApiException as ex:
             if ex.error_type in [TaskingError.NON_EXISTENT_PIPELINE, TaskingError.PIPELINE_NOT_PROCESSED]:
-                raise TaskingException(ex.error_type, ex.error_message)
-            raise 
+                raise TaskingException(ex.error_type, ex.error_message) from ex
+            raise
+    
+    #TODO: Pro finální získání fotek a skládání vytvořir novou třídu!
+    Image = TypeVar('Image')
+    def retrieve_image(self, tiles: Tiles) -> Image:
+        pass
+
+
+
+
+     
 
 
 

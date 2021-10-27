@@ -98,19 +98,27 @@ class TestTaskingObject(unittest.TestCase):
     @patch('spaceknow.api.SpaceknowApi.call', mocked_call_valid_response)
     def test_get_status_valid_response(self):
         session = AuthorizedSession('someToken')
-        taskObject = TaskingObject(session, self.PIPELINE_ID, None)
+        task_object = TaskingObject(session, self.PIPELINE_ID, None)
 
-        status, nexTry = taskObject.get_status()
+        status, nexTry = task_object.get_status()
         self.assertIn(status, list(TaskingStatus))
 
     @patch('requests.Session.request', generate_mocked_session_request(TASKIN_ERROR_TEXT))
     def test_get_status_taskin_error(self):
         session = AuthorizedSession('someToken')
-        taskObject = TaskingObject(session, self.PIPELINE_ID, None)
+        task_object = TaskingObject(session, self.PIPELINE_ID, None)
 
         with self.assertRaises(TaskingException):
-            status, nexTry = taskObject.get_status()
+            status, nexTry = task_object.get_status()
 
+    @patch('requests.Session.request', generate_mocked_session_request(TestSpaceknowApi.AUTH_ERROR_RESPONSE_BODY))
+    def test_get_status_spaceknowException_should_throw(self):
+        session = AuthorizedSession('someToken')
+        task_object = TaskingObject(session, self.PIPELINE_ID, None)
+
+        with self.assertRaises(SpaceknowApiException) as ctx:
+            task_object.get_status()
+        self.assertNotIsInstance(ctx.exception, TaskingException)
 
 class TestRagnarApi(unittest.TestCase):
     INVALID_RESPONSE = '{"key": "unexpected", "anotherKey": "unexpected too"}'
@@ -175,7 +183,14 @@ class TestRagnarApi(unittest.TestCase):
         with self.assertRaises(TaskingException):
             ragnar.retrieve_results('pipeline-id')        
 
+    @patch('requests.Session.request', generate_mocked_session_request(TestSpaceknowApi.AUTH_ERROR_RESPONSE_BODY))
+    def test_retrieve_results_spaceknowException_should_throw(self):
+        session = AuthorizedSession('someToken')
+        ragnar = RagnarApi(session)
 
+        with self.assertRaises(SpaceknowApiException) as ctx:
+            ragnar.retrieve_results('pipeline-id')   
+        self.assertNotIsInstance(ctx.exception, TaskingException)
 
 class TestKrakenApi(unittest.TestCase):
     pass
