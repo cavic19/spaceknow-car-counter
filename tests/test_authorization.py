@@ -1,4 +1,4 @@
-from unittest .mock import patch
+from unittest.mock import patch
 import unittest 
 from spaceknow.authorization import AuthorizationService, UnexpectedResponseException
 import spaceknow.errors as errors

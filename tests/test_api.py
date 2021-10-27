@@ -7,6 +7,7 @@ from requests.utils import default_headers
 import unittest 
 import json
 import geojson
+from shared import generate_mocked_session_request
 
 from spaceknow.errors import SpaceknowApiException, TaskingException, UnexpectedResponseException
 
@@ -33,16 +34,6 @@ class TestAuthorizedSession(unittest.TestCase):
         self.assertDictEqual(dict(expectedHeader), dict(actualHeader))
 
 
-
-def generate_mocked_session_request(response_text: str):        
-    def mocked_session_request(self, method, url,
-        params=None, data=None, headers=None, cookies=None, files=None,
-        auth=None, timeout=None, allow_redirects=True, proxies=None,
-        hooks=None, stream=None, verify=None, cert=None, json=None):
-        respone = Response()
-        respone._content = bytes(response_text, 'utf-8')
-        return respone
-    return mocked_session_request
 
 class TestSpaceknowApi(unittest.TestCase):
     VALID_RESPONSE_BODY = '{"type": "json", "color": "red", "name": "John"}'
