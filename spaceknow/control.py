@@ -20,3 +20,14 @@ class TaskingManager:
             raise TaskingException(self.TASK_FAILED_ERROR,'Tasking failed unexpectedly.')
         self.__logger(status.name, wait_in_seconds)
         return taskingObject.retrieve_data()
+
+
+
+
+
+
+
+
+
+
+

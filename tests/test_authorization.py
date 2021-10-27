@@ -3,6 +3,7 @@ import unittest
 from spaceknow.authorization import AuthorizationService, UnexpectedResponseException
 import spaceknow.errors as errors
 from requests import Response
+from spaceknow.models import Credentials
 
 VALID_USERNAME = 'valid-username'
 VALID_PASSWORD = 'valid-password'
@@ -33,7 +34,7 @@ class TestAuthorization(unittest.TestCase):
     @patch('requests.Session.post', mocked_request_post_with_valid_response)
     def test_valid_credentials_should_equal(self):
         authService = AuthorizationService(VALID_CLIENTID)
-        token = authService.request_jwt(VALID_USERNAME, VALID_PASSWORD)
+        token = authService.request_jwt(Credentials(VALID_USERNAME, VALID_PASSWORD))
         
         self.assertEquals(token, VALID_TOKEN)
 
@@ -41,11 +42,11 @@ class TestAuthorization(unittest.TestCase):
     def test_invalid_credentials_should_throw_authenticationException(self):
         authService = AuthorizationService(VALID_CLIENTID)
         with  self.assertRaises(errors.AuthenticationException) as ctx:
-            authService.request_jwt('invalid-username','invalid-password')
+            authService.request_jwt(Credentials('invalid-username','invalid-password'))
         self.assertTrue(ERROR_TYPE in str(ctx.exception) and ERROR_DESCRIPTION in str(ctx.exception))
 
     @patch('requests.Session.post', mocked_request_post_with_invalid_response)
     def test_not_json_response_should_throw_unexpectetException(self):
         authService = AuthorizationService(VALID_CLIENTID)
         with self.assertRaises(UnexpectedResponseException):
-            authService.request_jwt(VALID_USERNAME, VALID_PASSWORD)
+            authService.request_jwt(Credentials(VALID_USERNAME, VALID_PASSWORD))

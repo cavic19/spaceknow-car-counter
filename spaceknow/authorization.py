@@ -1,5 +1,6 @@
 from requests import Session
 from spaceknow.errors import  AuthenticationException, UnexpectedResponseException
+from spaceknow.models import Credentials
 
 AUTH0_DOMAIN = 'https://spaceknow.auth0.com'
 
@@ -15,7 +16,7 @@ class AuthorizationService:
         self.__client_id =  client_id
         self.__session = session or Session()
 
-    def request_jwt(self, username:str, password: str) -> str:
+    def request_jwt(self, credentials: Credentials) -> str:
         """ Authenticates user with giver username and password and if successed returns jwt else throws AuthenticationException
 
         Args:
@@ -28,8 +29,8 @@ class AuthorizationService:
         pass
         body_json = {
             'client_id': self.__client_id,
-            'username': username,
-            'password': password,
+            'username': credentials.username,
+            'password': credentials.password,
             'connection': self.DEFAULT_CONNECTION,
             'grant_type': self.DEFAULT_GRANT_TYPE,
             'scope': self.DEFAULT_SCOPE
