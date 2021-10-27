@@ -151,12 +151,10 @@ class TestRagnarApi(unittest.TestCase):
         expectedResponse = json.loads(self.VALID_RETRIEVE_RESPONSE)['results'][0]
         
         
-        expectedResult = {
-            expectedResponse['sceneId']: datetime.strptime(expectedResponse['datetime'], RagnarApi.TIME_FORMAT)
-        }
+        expectedResult = [expectedResponse['sceneId']]
         actualResult = ragnar.retrieve_results('valid-pipeline-id')
 
-        self.assertDictEqual(expectedResult, actualResult)
+        self.assertListEqual(expectedResult, actualResult)
 
     @patch('requests.Session.request', generate_mocked_session_request(INVALID_RESPONSE))
     def test_retrieve_results_invalid_response_should_throw(self):
@@ -184,4 +182,6 @@ class TestRagnarApi(unittest.TestCase):
         self.assertNotIsInstance(ctx.exception, TaskingException)
 
 class TestKrakenApi(unittest.TestCase):
-    pass
+    def test_get_image_when_wrong_map_id_is_presented_should_throw_error(self):
+        #např pokus si ziskato brazky z analyzy aut
+        pass

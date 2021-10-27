@@ -1,18 +1,17 @@
 from typing import Tuple
 from requests import Session, Response
 from spaceknow.errors import UnexpectedResponseException,ApiError, AuthorizationException, SpaceknowApiException,TaskingError, TaskingException
-from geojson import GeoJSON
+from geojson import GeoJSON, feature
 from datetime import datetime
-from spaceknow.models import TaskingStatus, GeoJSONExtentValidator, Tiles
+from spaceknow.models import Feature, KrakenAnalysis, TaskingStatus, GeoJSONExtentValidator, Tiles
 from typing import Callable, TypeVar
-import area
 
 POST_METHOD = 'POST'
 GET_METHOD = 'GET'
 
 class AuthorizedSession(Session):
     """Session that contains authorization token."""
-    def __init__(self, authToken: str):
+    def __init__(self, authToken: str = None):
         super().__init__()
         self.update_auth_token(authToken)
 
@@ -149,15 +148,25 @@ class RagnarApi(SpaceknowApi):
         
 
     
-    def retrieve_results(self, pipeline_id) -> dict:
-        """If the search procedure has been finished, the results are returned. Otherwise it throws TaskingException."""
+    def retrieve_results(self, pipeline_id) -> list[str]:
+        """Retrieves list of 'scene ids' for a given procedure specified in 'initiate_search' method.
+
+        Args:
+            pipeline_id ([type]): Pipeline id of the procedure that is desired to be retrieved.
+
+        Raises:
+            TaskingException: In a case that pipeline wasn't processed or the pipeline id is wrong.
+            UnexpectedResponseException
+
+        Returns:
+            list[str]: List of scene ids coresponding to original query in 'initiate_search' method.
+        """
         response = None
         try:
             response = self.call(POST_METHOD, self.RETRIEVE_ENDPOINT,{'pipelineId': pipeline_id})
             results = response['results']
-            dates = [datetime.strptime(r['datetime'], self.TIME_FORMAT)for r in results]
             scenes = [r['sceneId'] for r in results ]
-            return dict(zip(scenes,dates))
+            return scenes
         except SpaceknowApiException as ex:
             if ex.error_type in [TaskingError.NON_EXISTENT_PIPELINE, TaskingError.PIPELINE_NOT_PROCESSED]:
                 raise TaskingException(ex.error_type, ex.error_message) from ex
@@ -174,13 +183,19 @@ class KrakenApi(SpaceknowApi):
     INITITATE_ENDPOINT = '/geojson/initiate'
     RETRIEVE_ENDPOINT = '/geojson/retrieve'
 
+    GRID_IMAGERY = "/kraken/grid/%s/-/%s/%s/%s/truecolor.png"
+    """/kraken/grid/<map_id>/-/<z>/<x>/<y>/truecolor.png"""
+
+    GRID_CARS = "/kraken/grid/%s/-/%s/%s/%s/detections.geojson"
+    """/kraken/grid/<map_id>/-/<z>/<x>/<y>/detections.geojson"""
+    
     def initiate_car_analysis(self, extent: GeoJSON, scene_id: str) -> KrakenTaskingObject:
-        return self.__initiate_analysis(extent,scene_id, self.CARS_PATH)
+        return self.__initiate_analysis(extent,scene_id, self.CARS_PATH, KrakenAnalysis.CARS)
 
     def initiate_imagery_analysis(self, extent: GeoJSON, scene_id: str) -> KrakenTaskingObject:
-        return self.__initiate_analysis(extent, scene_id, self.IMAGERY_PATH)
+        return self.__initiate_analysis(extent, scene_id, self.IMAGERY_PATH, KrakenAnalysis.IMAGERY)
 
-    def __initiate_analysis(self, extent: GeoJSON, scene_id: str, middle_path: str) -> KrakenTaskingObject:
+    def __initiate_analysis(self, extent: GeoJSON, scene_id: str, middle_path: str, analysis_type: KrakenAnalysis) -> KrakenTaskingObject:
         self._extent_validator.validate(extent)
         body_json = {
             'sceneId': scene_id,
@@ -189,26 +204,39 @@ class KrakenApi(SpaceknowApi):
         endpoint = self.RELEASE_PATH + middle_path + self.INITITATE_ENDPOINT
         response = self.call(POST_METHOD, endpoint, body_json)
         pipeline_id = self._try_get('pipelineId', response)
-        return KrakenTaskingObject(self._session, pipeline_id, lambda: self.__retrieve_analysis(pipeline_id, middle_path))
+        return KrakenTaskingObject(self._session, pipeline_id, lambda: self.__retrieve_analysis(pipeline_id, middle_path,analysis_type))
 
 
-    def __retrieve_analysis(self, pipeline_id: str, middle_path: str) -> Tiles:
+    def __retrieve_analysis(self, pipeline_id: str, middle_path: str, analysis_type: KrakenAnalysis) -> Tiles:
         try:
             endpoint = self.RELEASE_PATH + middle_path + self.RETRIEVE_ENDPOINT
             body_json = {'pipelineId': pipeline_id}
             response = self.call(POST_METHOD, endpoint, body_json)
             map_id = self._try_get('mapId', response)
             tiles = self._try_get('tiles', response)
-            return Tiles(map_id, tiles)
+            return Tiles(map_id, analysis_type, tiles)
         except SpaceknowApiException as ex:
             if ex.error_type in [TaskingError.NON_EXISTENT_PIPELINE, TaskingError.PIPELINE_NOT_PROCESSED]:
                 raise TaskingException(ex.error_type, ex.error_message) from ex
             raise
     
-    #TODO: Pro finální získání fotek a skládání vytvořir novou třídu!
-    Image = TypeVar('Image')
-    def retrieve_image(self, tiles: Tiles) -> Image:
-        pass
+
+    def get_images(self, map_id: str, tile: Tuple[int, int, int]):
+        endpoint = self.GRID_IMAGERY %(map_id, tile[0], tile[1], tile[2])
+        return self.call(GET_METHOD, endpoint, json_body=None)
+
+    def get_detections(self, map_id: str, tile: Tuple[int,int,int]) -> list[Feature]:
+        endpoint = self.GRID_CARS %(map_id, tile[0], tile[1], tile[2])
+        response = self.call(GET_METHOD, endpoint, json_body=None)
+        return self.__parse_detections_to_list_of_features(response)
+
+
+    def __parse_detections_to_list_of_features(self, detections: dict) -> list[Feature]:
+        features = self._try_get('features', detections)
+        properties = [self._try_get('properties', f) for f in features]
+        return [Feature(self._try_get('class',p), int(self._try_get('count',p)) ) for p in properties]
+            
+
 
 
 
