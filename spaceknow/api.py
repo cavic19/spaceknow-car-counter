@@ -32,7 +32,7 @@ class SpaceknowApi:
         self._session = session
         self._extent_validator = GeoJSONExtentValidator(0)
 
-    def call(self, method, api_endpoint, json_body: dict) -> dict:
+    def _call(self, method, api_endpoint, json_body: dict) -> dict:
         """Calls an API."""
         response = self._session.request(method, url= self.DOMAIN + api_endpoint, json=json_body)
         try:       
@@ -42,7 +42,7 @@ class SpaceknowApi:
         except ValueError as ex:
             raise UnexpectedResponseException(response.text) from ex
 
-    def get_image(self, endpoint) -> Image:
+    def _get_image(self, endpoint) -> Image:
         """Gets image from a given endpoint.
 
         Raises:
@@ -57,6 +57,7 @@ class SpaceknowApi:
         
 
     def __check_for_errors(self, response: dict) -> None:
+        """Check whether any errors where thrown. If so, raises SpaceknoApiException."""
         if self.__is_call_failure(response):
             error_type = response['error']
             error_message = response.get('errorMessage', '')
@@ -66,6 +67,7 @@ class SpaceknowApi:
         return 'error' in response
     
     def _try_get(self, key: str, response: dict):
+        """Tries to get a value out of a given response. If failure, raises UnexpectedResponseException."""
         try:
             return response[key]
         except KeyError as ex:
@@ -74,15 +76,15 @@ class SpaceknowApi:
 
 
 class TaskingObject(SpaceknowApi):
-    """Encapsulates asynchronous operations on the serverside."""
+    """Encapsulates asynchronous operations on serverside."""
     ENDPOINT = '/tasking/get-status'
 
     def __init__(self, session: AuthorizedSession, pipeline_id: str, on_success: Callable[[],dict]):
         """
         Args:
             session (AuthorizedSession): HttpClient with valid authorization token
-            pipeline_id (str): Pipeline ID coresponding to a encapsulated procedure
-            on_success (Callable[[],dict]): Function called when procedure finishes via 'retrieve_data' method
+            pipeline_id (str): Pipeline ID, that coresponds to a encapsulated procedure
+            on_success (Callable[[],dict]): Function called when procedure is successfully finished
         """
         super().__init__(session)
         self.__pipeline_id = pipeline_id
@@ -107,24 +109,17 @@ class TaskingObject(SpaceknowApi):
         return TaskingStatus[status], nextTry
 
     
-    def retrieve_data(self) -> dict:
+    def retrieve_data(self):
         """Retrives data from encapsulated procedere via constructor injected 'on_success' function"""
         return self.__on_success()
     
     def call(self, method, api_endpoint, json_body) -> dict:
         try:
-            return super().call(method,api_endpoint,json_body)
+            return super()._call(method,api_endpoint,json_body)
         except SpaceknowApiException as ex:
             if ex.error_type in [TaskingError.NON_EXISTENT_PIPELINE, TaskingError.PIPELINE_NOT_PROCESSED]:
                 raise TaskingException(ex.error_type, ex.error_message) from ex
             raise
-
-
-class KrakenTaskingObject(TaskingObject):
-    def __init__(self, session: AuthorizedSession, pipeline_id: str, on_success: Callable[[], Union[str, list]]):
-        super().__init__(session, pipeline_id, on_success)
-    def retrieve_data(self) -> Union[str, list]:
-        return super().retrieve_data()
 
 
 class RagnarApi(SpaceknowApi):
@@ -135,9 +130,9 @@ class RagnarApi(SpaceknowApi):
     def initiate_search(
         self, 
         extent: GeoJSON, 
-        fromDateTime: datetime, 
-        toDateTime: datetime, 
-        imagesProvider: str = 'gbdx', 
+        from_date_time: datetime, 
+        to_date_time: datetime, 
+        images_provider: str = 'gbdx', 
         dataset: str = 'idaho-pansharpened') -> TaskingObject:
         """Initiates search for scenes intersecting with a given extent. Returned scenes are withing a given time period and are provided by a given provider and dataset.
 
@@ -145,26 +140,24 @@ class RagnarApi(SpaceknowApi):
             extent (GeoJSON): Desired area to obtain satelite images for.
         """
         self._extent_validator.validate(extent)
-        self.__check_dates_validity(fromDateTime, toDateTime)  
+        self.__check_dates_validity(from_date_time, to_date_time)  
         json_body = {
-            'provider': imagesProvider,
+            'provider': images_provider,
             'dataset': dataset,
-            'startDatetime': fromDateTime.strftime(self.TIME_FORMAT),
-            'endDatetime': toDateTime.strftime(self.TIME_FORMAT),
+            'startDatetime': from_date_time.strftime(self.TIME_FORMAT),
+            'endDatetime': to_date_time.strftime(self.TIME_FORMAT),
             'extent': extent
         } 
-        response = self.call(POST_METHOD, self.INITIATE_ENDPOINT, json_body)
+        response = self._call(POST_METHOD, self.INITIATE_ENDPOINT, json_body)
         pipeline_id = self._try_get('pipelineId', response)
         return TaskingObject(self._session, pipeline_id, lambda: self.retrieve_results(pipeline_id))
 
 
-    def __check_dates_validity(self, fromDateTime: datetime, toDateTime: datetime):
-        if fromDateTime > toDateTime:
+    def __check_dates_validity(self, from_date_time: datetime, to_date_time: datetime):
+        if from_date_time > to_date_time:
             raise ValueError('toDateTime argument cant precede fromToDateTime')
     
         
-
-    
     def retrieve_results(self, pipeline_id) -> list[str]:
         """Retrieves list of 'scene ids' for a given procedure specified in 'initiate_search' method.
 
@@ -180,7 +173,7 @@ class RagnarApi(SpaceknowApi):
         """
         response = None
         try:
-            response = self.call(POST_METHOD, self.RETRIEVE_ENDPOINT,{'pipelineId': pipeline_id})
+            response = self._call(POST_METHOD, self.RETRIEVE_ENDPOINT,{'pipelineId': pipeline_id})
             results = response['results']
             scenes = [r['sceneId'] for r in results ]
             return scenes
@@ -195,49 +188,69 @@ class RagnarApi(SpaceknowApi):
 
 class KrakenApi(SpaceknowApi):
     """The API interfaces imagery and analyses through tiled web map interface."""
-    RELEASE_PATH = '/kraken/release'
-    CARS_PATH = '/cars'
-    IMAGERY_PATH = '/imagery'
-    INITITATE_ENDPOINT = '/geojson/initiate'
-    RETRIEVE_ENDPOINT = '/geojson/retrieve'
 
-    GRID_IMAGERY = "/kraken/grid/%s/-/%s/%s/%s/truecolor.png"
+    RELEASE_ENDPOINT = "/kraken/release/%s/geojson/%s"
+    """/kraken/release/<map_type/geojson/<initiate|retrieve>*"""
+
+    GRID_IMAGERY_ENDPOINT = "/kraken/grid/%s/-/%s/%s/%s/truecolor.png"
     """/kraken/grid/<map_id>/-/<z>/<x>/<y>/truecolor.png"""
 
-    GRID_CARS = "/kraken/grid/%s/-/%s/%s/%s/detections.geojson"
+    GRID_CARS_ENDPOINT = "/kraken/grid/%s/-/%s/%s/%s/detections.geojson"
     """/kraken/grid/<map_id>/-/<z>/<x>/<y>/detections.geojson"""
     
-    def initiate_car_analysis(self, extent: GeoJSON, scene_id: str) -> KrakenTaskingObject:
+    def initiate_car_analysis(self, extent: GeoJSON, scene_id: str) -> TaskingObject:
         """[summary]
 
         Args:
             extent (GeoJSON): Are of concern
             scene_id (str): Id of a chosen scene (satelite image)
         """
-        return self.__initiate_analysis(extent,scene_id, self.CARS_PATH)
+        return self.__initiate_analysis(extent,scene_id, 'cars')
 
-    def initiate_imagery_analysis(self, extent: GeoJSON, scene_id: str) -> KrakenTaskingObject:
-        return self.__initiate_analysis(extent, scene_id, self.IMAGERY_PATH)
+    def initiate_imagery_analysis(self, extent: GeoJSON, scene_id: str) -> TaskingObject:
+        """Initiates imagery analysis and returns TaskingObject. After retrieval, tiles (coordinates) of a given extent are obtained and map_id to identify the result.
+        Map_id is essential for conducting further analysis.
 
-    def __initiate_analysis(self, extent: GeoJSON, scene_id: str, middle_path: str) -> KrakenTaskingObject:
+
+        Args:
+            extent (GeoJSON): Are of concern.
+            scene_id (str): Unambiguously identifies satelite image on which the imagery analysis is conducted.
+
+        Returns:
+            TaskingObject
+        """
+        return self.__initiate_analysis(extent, scene_id, 'imagery')
+
+    def __initiate_analysis(self, extent: GeoJSON, scene_id: str, middle_path: str) -> TaskingObject:
         self._extent_validator.validate(extent)
         body_json = {
             'sceneId': scene_id,
             'extent': extent
         }
-        endpoint = self.RELEASE_PATH + middle_path + self.INITITATE_ENDPOINT
-        response = self.call(POST_METHOD, endpoint, body_json)
+        endpoint = self.RELEASE_ENDPOINT %(middle_path, 'initiate')
+        response = self._call(POST_METHOD, endpoint, body_json)
         pipeline_id = self._try_get('pipelineId', response)
-        return KrakenTaskingObject(self._session, pipeline_id, lambda: self.__retrieve_analysis(pipeline_id, middle_path))
+        return TaskingObject(self._session, pipeline_id, lambda: self.__retrieve_analysis(pipeline_id, middle_path))
 
 
     def __retrieve_analysis(self, pipeline_id: str, middle_path: str) -> Union[str, list]:
         """Retrieves data from a server. In a case the data aren't ready to be retrieved, the TaskingException is raised. 
-        In a case of succesfull fetch, the tuple of map_id and list of tile coordinates (zoom, x, y)."""
+        In a case of succesfull fetch, the tuple of map_id and list of tile coordinates (zoom, x, y) are 
+
+        Args:
+            pipeline_id (str): Identified of a tasking object.
+            middle_path (str)
+
+        Raises:
+            TaskingException: Tasking failed. No data can be retrieved.
+
+        Returns:
+            Union[str, list]: Tuple of map_id (unique identifie of the result) and list of tile coordinates (zoom, x_tile, y_tile).
+        """
         try:
-            endpoint = self.RELEASE_PATH + middle_path + self.RETRIEVE_ENDPOINT
+            endpoint = self.RELEASE_ENDPOINT %(middle_path, 'retrieve')
             body_json = {'pipelineId': pipeline_id}
-            response = self.call(POST_METHOD, endpoint, body_json)
+            response = self._call(POST_METHOD, endpoint, body_json)
             map_id = self._try_get('mapId', response)
             tiles = self._try_get('tiles', response)
             return map_id, tiles
@@ -248,14 +261,30 @@ class KrakenApi(SpaceknowApi):
     
 
     def get_satelite_image(self, map_id: str, tile: Tuple[int, int, int]) -> Image.Image:
-        """Gets satelite image for a given map_id and tile."""
-        endpoint = self.GRID_IMAGERY %(map_id, tile[0], tile[1], tile[2])
-        return self.get_image(endpoint)
+        """Retrieves satelite image, by map_id, tile, that were analysed earlier.
+
+        Args:
+            map_id (str): Unique identifier of analysis result.
+            tile (Tuple[int, int, int]): Tile coordinates (zoom, x_tile, y_tile).
+
+        Returns:
+            Image.Image: Satelite image coresponding to give map_id, tile.
+        """
+        endpoint = self.GRID_IMAGERY_ENDPOINT %(map_id, tile[0], tile[1], tile[2])
+        return self._get_image(endpoint)
 
     def get_detections(self, map_id: str, tile: Tuple[int,int,int]) -> list[Feature]:
-        """Retrieves cars analysis results caried out by 'inititate_cars_analysis' method."""
-        endpoint = self.GRID_CARS %(map_id, tile[0], tile[1], tile[2])
-        response = self.call(GET_METHOD, endpoint, json_body=None)
+        """Retrieves data results of cars analysis. 
+
+        Args:
+            map_id (str): [description]
+            tile (Tuple[int,int,int]): [description]
+
+        Returns:
+            list[Feature]: List of features. Each feature contains geoemtrieas of specified count. Geometry represents found object (car).
+        """
+        endpoint = self.GRID_CARS_ENDPOINT %(map_id, tile[0], tile[1], tile[2])
+        response = self._call(GET_METHOD, endpoint, json_body=None)
         return self.__parse_detections_to_list_of_features(response)
 
 
@@ -269,7 +298,7 @@ class KrakenApi(SpaceknowApi):
         counts = [int(self._try_get('count',p)) for p in properties]
         geometries = [GeoJSON(g) for g in geometry_strings]
 
-        return [Feature(i[0], i[1], i[2]) for i in zip(classes, counts, geometries)]
+        return [Feature(item[0], item[1], item[2]) for item in zip(classes, counts, geometries)]
             
 
 
