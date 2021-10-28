@@ -4,35 +4,76 @@ from geojson import Polygon
 from PIL import Image
 from PIL import ImageDraw
 
-def tile_to_deg(x, y, z):
-    """Converts tile (x, y, z) to longitudial, latitudial coordinates."""
-    n = 2.0 ** z
-    lon_deg = x / n * 360.0 - 180.0
-    lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * y / n)))
+def tile_to_deg_coords(x_tile, y_tile, zoom) -> float:
+    """Transforms presented tile coordinate to latitude, longitude degrees.
+
+    Args:
+        x_tile ([type])
+        y_tile ([type])
+        zoom ([type])
+
+    Returns:
+        (float, float): Latitude, longitude degrees.
+    """
+    n = 2.0 ** zoom
+    lon_deg = x_tile / n * 360.0 - 180.0
+    lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * y_tile / n)))
     lat_deg = math.degrees(lat_rad)
     return (lat_deg, lon_deg)
 
-def deg_to_tile(lat_deg, lon_deg, z):
-    """Converts tile (x, y, z) to longitudial, latitudial coordinates."""
+
+def deg_to_tile_coords(lon_deg, lat_deg, zoom):
+    """In acordance with presented zoom parametr, transforms latitudial, longitudial coordinates to tile coordinates
+
+    Args:
+        lat_deg (float): Latitudial degree
+        lon_deg (float): Longitudial degree
+        zoom (float): Zoom of final tile
+
+    Returns:
+        (float, float): (x_tile, y_tile)
+    """
     lat_rad = math.radians(lat_deg)
-    n = 2.0 ** z
-    xtile = (lon_deg + 180.0) / 360.0 * n
-    ytile = (1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n
-    return (xtile, ytile)
+    n = 2.0 ** zoom
+    x_tile = (lon_deg + 180.0) / 360.0 * n
+    y_tile = (1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n
+    return (x_tile, y_tile)
 
 
-def create_image_from_tile(tile: tuple[int,int,int], bc_image: Image.Image, highlights: list[Polygon], fill_color: str = None):
-    highlight_coords_tuples = [[tuple(j[::-1]) for j in i['coordinates'][0]] for i in highlights]
-    highlight_tile_coords = [[deg_to_tile(*j, tile[0]) for j in i] for i in highlight_coords_tuples]
-    highlight_pixel_coords = [[__map_to_pixel_coordinates((tile[1], tile[2]), bc_image.size, j ) for j in i] for i in highlight_tile_coords]
+def highlight_cars_on_tile(tile: tuple[int,int,int], tile_image: Image.Image, car_features: list[Polygon], fill_color: str = "Red") -> Image.Image:
+    """Highlights cars in given tile (given image) and returns the result.
+
+    Args:
+        tile (tuple[int,int,int]): Geographical boundaries of concern. 
+        tile_image (Image.Image): Coresponds to a given tile.
+        car_features (list[Polygon]): Each polygon represents area taken up by a car. Coordinates are expressed in longitudial, latitudial cooridnates.
+        fill_color (str, optional): Highlighting color. Defaults to "Red".
+
+    Returns:
+        Image.Image
+    """
+    # "polygon['coordinates']" are represented by [[[lon_deg0, lat_deg0], [lon_deg1, lat_deg1], ...]]
+    highlight_coords_tuples = [[tuple(coords) for coords in polygon['coordinates'][0]] for polygon in car_features]
+    highlight_tile_coords = [[deg_to_tile_coords(*coords, tile[0]) for coords in coords_list] for coords_list in highlight_coords_tuples]
+    highlight_pixel_coords = [[tile_to_pixel_coords((tile[1], tile[2]), tile_image.size, coords ) for coords in coords_list] for coords_list in highlight_tile_coords]
     
-    draw = ImageDraw.Draw(bc_image)
+    draw = ImageDraw.Draw(tile_image)
     for polygon_coords in highlight_pixel_coords:
-        draw.polygon(polygon_coords,fill=fill_color or "red")
-    return bc_image
+        draw.polygon(polygon_coords,fill=fill_color)
+    return tile_image
 
 
-def __map_to_pixel_coordinates(origin: Tuple[int,int], image_size: Tuple[int,int], abs_coords: Tuple[int,int]):
+def tile_to_pixel_coords(origin: Tuple[int,int], image_size: Tuple[int,int], abs_coords: Tuple[int,int]) -> Tuple[int, int]:
+    """Transforms absolute geographical tile coordinates to pixel coordinates relative to the origin.
+
+    Args:
+        origin (Tuple[int,int])
+        image_size (Tuple[int,int])
+        abs_coords (Tuple[int,int])
+
+    Returns:
+        (int, int): Relative pixel coordinates
+    """
     width = image_size[0]
     height = image_size[1]
 
@@ -41,8 +82,17 @@ def __map_to_pixel_coordinates(origin: Tuple[int,int], image_size: Tuple[int,int
 
     return (x, y)
 
+
+
 def merge_images(images: list[list[Image.Image]]) -> Image.Image:
-    """Merges images in acordance with a given layout. Outputs final image."""
+    """Merge images in give layout to a one image.
+
+    Args:
+        images (list[list[Image.Image]]): Images if desired layout.
+
+    Returns:
+        Image.Image
+    """ 
     horizontally_merged_images = []
     for hor_images in images:
        horizontally_merged_images.append(__merge_horizontally(hor_images))
