@@ -30,7 +30,7 @@ startDateTime = datetime(2018,1,5,0,0,0)
 endDateTime = datetime(2018,1,8,0,0,0)
 
 sk = Spaceknow(Credentials(login,password), print)
-query_obj = sk.query_on(testAirportPolygon,startDateTime, endDateTime)
+query_obj = sk.analyse_on(testAirportPolygon,startDateTime, endDateTime)
 query_obj.get_images()
 print("Got images")
 
