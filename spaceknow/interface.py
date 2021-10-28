@@ -132,8 +132,8 @@ class SpaceknowCarsAnalyser(ExceptionObserver):
     
     AUTH0_CLIENT_ID = 'hmWJcfhRouDOaJK2L8asREMlMrv3jFE1'
 
-    def __init__(self, credentials: Credentials, logger: Callable[[str], None] = None):
-        self.__credentials = credentials
+    def __init__(self, username:str, password: str, logger: Callable[[str], None] = None):
+        self.__credentials = Credentials(username, password)
         self.__tasking_manager = TaskingManager(lambda tx, nm: logger(f'{tx}! Next try in {nm}s.')  if logger else None)
         self.__auth_session = AuthorizedSession()
         self.__ragnar_api = RagnarApi(self.__auth_session)

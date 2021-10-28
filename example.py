@@ -1,19 +1,8 @@
-from PIL import Image 
 from geojson import Polygon
 from datetime import datetime
+from spaceknow.interface import SpaceknowCarsAnalyser
 
-import geojson
-from spaceknow.authorization import AuthorizationService
-from spaceknow.api import AuthorizedSession, KrakenApi, RagnarApi, TaskingObject, TaskingStatus
-from time import sleep
-from spaceknow.interface import Spaceknow
-from spaceknow.models import Credentials
-import json
-from geojson import Polygon
-from datetime import datetime
-#TESTING DATA
-clientId = 'hmWJcfhRouDOaJK2L8asREMlMrv3jFE1'
-login = "tomecek-backend-candidate@spaceknow.com"
+username = "tomecek-backend-candidate@spaceknow.com"
 password = "0d6bojq4wy2o"
 testAirportPolygon = Polygon(
     [
@@ -29,13 +18,11 @@ testAirportPolygon = Polygon(
 startDateTime = datetime(2018,1,5,0,0,0)
 endDateTime = datetime(2018,1,8,0,0,0)
 
-sk = Spaceknow(Credentials(login,password), print)
+sk = SpaceknowCarsAnalyser(username, password, print)
 query_obj = sk.analyse_on(testAirportPolygon,startDateTime, endDateTime)
-query_obj.get_images()
-print("Got images")
 
 print(query_obj.count_cars())
-print("Got cars")
+query_obj.get_images()[0].show()
 
 
 
