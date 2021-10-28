@@ -9,6 +9,7 @@ from spaceknow.errors import AuthorizationException, SpaceknowApiException
 from spaceknow.models import Credentials, Feature, Observable, ExceptionObserver, Tiles
 from spaceknow.control import TaskingManager
 from geojson import GeoJSON
+from PIL.Image import Image
 
 #TODO: pridas flag true/false podle toho jestli chces logging nebo ne 
 
@@ -72,7 +73,7 @@ class SpaceknowAnalysis(Observable):
 
 
     @_observe_exception
-    def get_image(self) -> object:
+    def get_image(self) -> Image:
         assert False, 'Method not implemented!'
 
 
