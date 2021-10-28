@@ -1,12 +1,16 @@
+from PIL import Image 
 from geojson import Polygon
 from datetime import datetime
+
+import geojson
 from spaceknow.authorization import AuthorizationService
 from spaceknow.api import AuthorizedSession, KrakenApi, RagnarApi, TaskingObject, TaskingStatus
 from time import sleep
 from spaceknow.interface import Spaceknow
 from spaceknow.models import Credentials
-
-
+import json
+from geojson import Polygon
+from datetime import datetime
 #TESTING DATA
 clientId = 'hmWJcfhRouDOaJK2L8asREMlMrv3jFE1'
 login = "tomecek-backend-candidate@spaceknow.com"
@@ -26,8 +30,34 @@ startDateTime = datetime(2018,1,5,0,0,0)
 endDateTime = datetime(2018,1,8,0,0,0)
 
 sk = Spaceknow(Credentials(login,password), print)
-count = sk.query_on(testAirportPolygon,startDateTime, endDateTime).count_cars()
-print(count)
+query_obj = sk.query_on(testAirportPolygon,startDateTime, endDateTime)
+query_obj.get_images()
+print("Got images")
+
+print(query_obj.count_cars())
+print("Got cars")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

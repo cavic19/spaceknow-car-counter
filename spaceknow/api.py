@@ -1,10 +1,13 @@
 from typing import Tuple
+from PIL import Image, UnidentifiedImageError
 from requests import Session
 from spaceknow.errors import UnexpectedResponseException, SpaceknowApiException,TaskingError, TaskingException
 from geojson import GeoJSON
 from datetime import datetime
-from spaceknow.models import Feature, TaskingStatus, GeoJSONExtentValidator, Tiles
-from typing import Callable
+from spaceknow.models import Feature, TaskingStatus, GeoJSONExtentValidator
+from typing import Callable, Union
+from io import BytesIO
+
 
 POST_METHOD = 'POST'
 GET_METHOD = 'GET'
@@ -32,12 +35,26 @@ class SpaceknowApi:
     def call(self, method, api_endpoint, json_body: dict) -> dict:
         """Calls an API."""
         response = self._session.request(method, url= self.DOMAIN + api_endpoint, json=json_body)
-        try:           
+        try:       
             response_json =  response.json()
             self.__check_for_errors(response_json)
             return response_json
         except ValueError as ex:
             raise UnexpectedResponseException(response.text) from ex
+
+    def get_image(self, endpoint) -> Image:
+        """Gets image from a given endpoint.
+
+        Raises:
+            UnexpectedResponseException: When no image parsable data are presented.
+        """
+        response = self._session.request(GET_METHOD, url = self.DOMAIN + endpoint)
+        try:
+            return Image.open(BytesIO(response.content))
+        except UnidentifiedImageError:
+            raise UnexpectedResponseException(response)
+
+        
 
     def __check_for_errors(self, response: dict) -> None:
         if self.__is_call_failure(response):
@@ -104,9 +121,9 @@ class TaskingObject(SpaceknowApi):
 
 
 class KrakenTaskingObject(TaskingObject):
-    def __init__(self, session: AuthorizedSession, pipeline_id: str, on_success: Callable[[], Tiles]):
+    def __init__(self, session: AuthorizedSession, pipeline_id: str, on_success: Callable[[], Union[str, list]]):
         super().__init__(session, pipeline_id, on_success)
-    def retrieve_data(self) -> Tiles:
+    def retrieve_data(self) -> Union[str, list]:
         return super().retrieve_data()
 
 
@@ -214,23 +231,26 @@ class KrakenApi(SpaceknowApi):
         return KrakenTaskingObject(self._session, pipeline_id, lambda: self.__retrieve_analysis(pipeline_id, middle_path))
 
 
-    def __retrieve_analysis(self, pipeline_id: str, middle_path: str) -> Tiles:
+    def __retrieve_analysis(self, pipeline_id: str, middle_path: str) -> Union[str, list]:
+        """Retrieves data from a server. In a case the data aren't ready to be retrieved, the TaskingException is raised. 
+        In a case of succesfull fetch, the tuple of map_id and list of tile coordinates (zoom, x, y)."""
         try:
             endpoint = self.RELEASE_PATH + middle_path + self.RETRIEVE_ENDPOINT
             body_json = {'pipelineId': pipeline_id}
             response = self.call(POST_METHOD, endpoint, body_json)
             map_id = self._try_get('mapId', response)
             tiles = self._try_get('tiles', response)
-            return Tiles(map_id, tiles)
+            return map_id, tiles
         except SpaceknowApiException as ex:
             if ex.error_type in [TaskingError.NON_EXISTENT_PIPELINE, TaskingError.PIPELINE_NOT_PROCESSED]:
                 raise TaskingException(ex.error_type, ex.error_message) from ex
             raise
     
 
-    def get_images(self, map_id: str, tile: Tuple[int, int, int]) -> object:
+    def get_satelite_image(self, map_id: str, tile: Tuple[int, int, int]) -> Image.Image:
+        """Gets satelite image for a given map_id and tile."""
         endpoint = self.GRID_IMAGERY %(map_id, tile[0], tile[1], tile[2])
-        return self.call(GET_METHOD, endpoint, json_body=None)
+        return self.get_image(endpoint)
 
     def get_detections(self, map_id: str, tile: Tuple[int,int,int]) -> list[Feature]:
         """Retrieves cars analysis results caried out by 'inititate_cars_analysis' method."""
@@ -241,8 +261,15 @@ class KrakenApi(SpaceknowApi):
 
     def __parse_detections_to_list_of_features(self, detections: dict) -> list[Feature]:
         features = self._try_get('features', detections)
+    
+        geometry_strings = [self._try_get('geometry', f) for f in features]
         properties = [self._try_get('properties', f) for f in features]
-        return [Feature(self._try_get('class',p), int(self._try_get('count',p)) ) for p in properties]
+        
+        classes = [self._try_get('class',p) for p in properties]
+        counts = [int(self._try_get('count',p)) for p in properties]
+        geometries = [GeoJSON(g) for g in geometry_strings]
+
+        return [Feature(i[0], i[1], i[2]) for i in zip(classes, counts, geometries)]
             
 
 

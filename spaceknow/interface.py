@@ -1,20 +1,21 @@
-from datetime import date, datetime
-from typing import Callable, Tuple
+from datetime import datetime
+from typing import Callable, Iterable, Tuple, Union
 
-import geojson
-from geojson import feature
 from spaceknow.api import AuthorizedSession, KrakenApi, RagnarApi
 from spaceknow.authorization import AuthorizationService
 from spaceknow.errors import AuthorizationException, SpaceknowApiException
-from spaceknow.models import Credentials, Feature, Observable, ExceptionObserver, Tiles
+from spaceknow.models import Credentials, Feature, Observable, ExceptionObserver
 from spaceknow.control import TaskingManager
 from geojson import GeoJSON
 from PIL.Image import Image
+import itertools
+from spaceknow.visualization import create_image_from_tile, merge_images
 
 #TODO: pridas flag true/false podle toho jestli chces logging nebo ne 
 
-class SpaceknowAnalysis(Observable):
+class SpaceknowAnalysis(Observable):  
     """Encapsulation of spaceknow API calls."""
+
     def __init__(self,
      kraken_api: KrakenApi,
      tasking_manager: TaskingManager,
@@ -31,14 +32,13 @@ class SpaceknowAnalysis(Observable):
         def wrapper(self):
             try:
                 return func(self)
-            except Exception as ex:
+            except AuthorizationException as ex:
                 self.__notify_observers__(ex)
             finally:
                 self.__remove_all_observers__()
         return wrapper
     
-
-
+    # region count_cars
     @_observe_exception
     def count_cars(self) -> int:
         """Counts cars in a prespecified area.
@@ -48,7 +48,6 @@ class SpaceknowAnalysis(Observable):
         """
         return self.__count_cars_in_scenes(self.__scene_ids)
 
-
     def __count_cars_in_scenes(self, scene_ids: list[str]) -> int:
         car_count = 0
         for scene_id in scene_ids:
@@ -56,25 +55,74 @@ class SpaceknowAnalysis(Observable):
         return car_count
 
 
-    def __count_cars_in_scene(self, scene_id: str) -> int:
-        kraken_task_obj = self.__kraken_api.initiate_car_analysis(self.__extent, scene_id)
-        tiles = self.__tasking_manager.wait_untill_completed(kraken_task_obj)           
-        return self.__count_cars_in_tiles(tiles)
+    def __count_cars_in_scene(self, scene_id: str) -> int:    
+        features = self.__get_cars_tiles_and_features(scene_id)[1]
+        return sum([self.__cars_in_features(f) for f in features])
 
-    def __count_cars_in_tiles(self, tiles: Tiles) -> int:
-        car_count = 0
-        for tile in tiles:
-            car_count += self.__count_cars_in_tile(tiles.map_id, tile)
-        return car_count
-
-    def __count_cars_in_tile(self, map_id: str, tile: Tuple[int,int,int]) -> int:
-        features = self.__kraken_api.get_detections(map_id, tile)
+    
+    def __cars_in_features(self, features: list[Feature]) -> int:
         return sum([f.count for f in features])
+    # endregion
 
+    def __get_features_from_tile(self, map_id: str, tile: Tuple[int,int,int]) -> list[Feature]:
+        return self.__kraken_api.get_detections(map_id, tile)
+
+# region get_image
+    # In a case of already carried out cars analysis the results are stored here.
+    __cache: dict[str, dict[tuple[int,int,int], list[Feature]]] = {}
 
     @_observe_exception
-    def get_image(self) -> Image:
-        assert False, 'Method not implemented!'
+    def get_images(self) -> list[Image]:
+        output = []
+        for scene_id in self.__scene_ids:
+            output.append(self.__get_images_from_scene_id(scene_id))
+        return output
+
+
+    def __get_images_from_scene_id(self, scene_id: str) -> Image:  
+        tiles, features = self.__get_cars_tiles_and_features(scene_id)
+        geometries = [[f.geometry for f in tile_fs] for tile_fs in features]
+        kraken_imagery_task_obj = self.__kraken_api.initiate_imagery_analysis(self.__extent, scene_id)      
+        imagery_map_id = self.__tasking_manager.wait_untill_completed(kraken_imagery_task_obj)[0]
+        images = [self.__get_image_from_tile(imagery_map_id, t) for t in tiles]
+        images_with_highlights = [create_image_from_tile(*i) for i in zip(tiles, images, geometries)]
+        images_layout = self.__build_layout(tiles, images_with_highlights) 
+        return merge_images(images_layout)
+
+    def __get_cars_tiles_and_features(self,scene_id: str) -> Union[list[tuple[int,int,int]], list[list[Feature]]]:
+        if scene_id in self.__cache:
+            scene_cache = self.__cache[scene_id]
+            return scene_cache[0], scene_cache[1]
+
+        kraken_cars_task_obj = self.__kraken_api.initiate_car_analysis(self.__extent, scene_id)
+        cars_map_id, cars_tiles = self.__tasking_manager.wait_untill_completed(kraken_cars_task_obj)
+        features = [self.__get_features_from_tile(cars_map_id, tile) for tile in cars_tiles]
+        self.__cache[scene_id] =  (cars_tiles, features)
+        return cars_tiles, features
+
+
+
+
+
+
+
+
+
+
+    def __get_image_from_tile(self, map_id:str, tile: Tuple[int,int,int]) -> Image:
+        return self.__kraken_api.get_satelite_image(map_id, tile)
+
+    def __build_layout(self, tiles, images: list[Image]) -> list[list[Image]]:
+        zipped = zip(tiles, images)
+        sorted_by_y_tile = sorted(zipped, key=lambda x: x[0][2])
+        grouped_by_y_tile = itertools.groupby(sorted_by_y_tile, lambda x: x[0][2])
+        sorted_by_x_tile = []
+        for key, subbiter in grouped_by_y_tile:
+            sorted_by_x_tile.append(sorted(list(subbiter), key=lambda x: x[0][1]))
+        return [[col[1] for col in row] for row in sorted_by_x_tile]
+
+
+# endregion
 
 
 
@@ -88,7 +136,7 @@ class SpaceknowActionFactory:
 
 class Spaceknow(ExceptionObserver):
     """Entrypoint of the package."""
-    __AUTH0_CLIENT_ID = 'hmWJcfhRouDOaJK2L8asREMlMrv3jFE1'
+    AUTH0_CLIENT_ID = 'hmWJcfhRouDOaJK2L8asREMlMrv3jFE1'
     __kraken_api: KrakenApi = None
     __ragnar_api: RagnarApi = None
     __auth_session: AuthorizedSession = None
@@ -102,7 +150,7 @@ class Spaceknow(ExceptionObserver):
         """Requests imagery data from a remote api and returns 'SpaceknowAnalysis' object on which futher actions maybe be caried out. """
         self.__check_initiation()
         scene_ids = self.__get_scene_ids(extent, from_date, to_date)
-        sk_analysis = self.__sk_analysis_factory.create(extent, scene_ids, from_date, to_date)
+        sk_analysis = self.__sk_analysis_factory.create(extent, scene_ids)
         sk_analysis.__add_observer__(self)
         return sk_analysis
 
@@ -117,7 +165,7 @@ class Spaceknow(ExceptionObserver):
 
 
     def __initiate(self) -> None:
-        self.__auth_service = AuthorizationService(self.__AUTH0_CLIENT_ID)
+        self.__auth_service = AuthorizationService(self.AUTH0_CLIENT_ID)
         self.__auth_session = AuthorizedSession()
         self.__kraken_api = KrakenApi(self.__auth_session)
         self.__ragnar_api = RagnarApi(self.__auth_session)
@@ -137,7 +185,7 @@ class Spaceknow(ExceptionObserver):
 
     def __notify__(self, ex: Exception):
         if isinstance(ex, AuthorizationException):
-            #TODO: Update authorization token.
+            #TODO: Updates authorization token.
             assert False, 'Not implemented.'
         else:
             raise ex
