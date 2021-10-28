@@ -28,19 +28,19 @@ class GeoJSONExtentValidator:
         self.__minArea = minArea
 
     def validate(self, extent: GeoJSON) -> None:
+        """Validates the presented extent in acordance with spaceknow API requirments.
+
+        Raises:
+            ValueError: In a case of not valid extent.
+        """
         if area(extent) <= self.__minArea:
             raise ValueError("Extent's area can't be 0!")
-
-class KrakenAnalysis(Enum):
-    IMAGERY = auto()
-    CARS = auto()
 
 
 class Tiles(MutableSequence):
     """Collection of coordinates. Each coresponds to a tile. (zoom, x, y)."""
-    def __init__(self, map_id: str, analysis: KrakenAnalysis,  list: list = []):
+    def __init__(self, map_id: str,  list: list = []):
         self.map_id = map_id
-        self.analysis_type = analysis
         self._inner_list = list
 
     def __len__(self):
@@ -64,6 +64,7 @@ class Tiles(MutableSequence):
 
 
 class ExceptionObserver(ABC):
+    """Reacts on exceptions raised by observable."""
     @abstractmethod
     def __notify__(self, ex: Exception):
         pass

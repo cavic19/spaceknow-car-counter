@@ -26,7 +26,7 @@ startDateTime = datetime(2018,1,5,0,0,0)
 endDateTime = datetime(2018,1,8,0,0,0)
 
 sk = Spaceknow(Credentials(login,password))
-count = sk.request_on(testAirportPolygon,startDateTime, endDateTime).count_cars()
+count = sk.query_on(testAirportPolygon,startDateTime, endDateTime).count_cars()
 print(count)
 
 

@@ -5,7 +5,7 @@ import geojson
 from geojson import feature
 from spaceknow.api import AuthorizedSession, KrakenApi, RagnarApi
 from spaceknow.authorization import AuthorizationService
-from spaceknow.errors import SpaceknowApiException
+from spaceknow.errors import AuthorizationException, SpaceknowApiException
 from spaceknow.models import Credentials, Feature, Observable, ExceptionObserver, Tiles
 from spaceknow.control import TaskingManager
 from geojson import GeoJSON
@@ -13,9 +13,10 @@ from geojson import GeoJSON
 #TODO: pridas flag true/false podle toho jestli chces logging nebo ne 
 
 class SpaceknowAction(Observable):
+    """Encapsulation of spaceknow API calls."""
     def __init__(self,
      ragnar_api: RagnarApi,
-     kraken_api:KrakenApi,
+     kraken_api: KrakenApi,
      tasking_manager: TaskingManager,
      extent: GeoJSON,
      from_date: datetime,
@@ -30,22 +31,25 @@ class SpaceknowAction(Observable):
 
 
     def _observe_exception(func):
+        """Redirects a func's exception to observers."""
         def wrapper(self):
             try:
                 return func(self)
             except Exception as ex:
-                self.__on_exception(ex)
+                self.__notify_observers__(ex)
             finally:
                 self.__remove_all_observers__()
         return wrapper
-
-
-    def __on_exception(self, ex: Exception):
-        self.__notify_observers__(ex)
+    
 
 
     @_observe_exception
     def count_cars(self) -> int:
+        """Counts cars in a prespecified area.
+
+        Returns:
+            int: Number of cars found within given extent (GeoJSON).
+        """
         ragnar_task_obj = self.__ragnar_api.initiate_search(
             self.__extent,
             self.__from_date,
@@ -80,7 +84,7 @@ class SpaceknowAction(Observable):
 
     @_observe_exception
     def get_image(self) -> object:
-        pass
+        assert False, 'Method not implemented!'
 
 
 
@@ -98,9 +102,8 @@ class SpaceknowActionFactory:
 
 
 
-
-
 class Spaceknow(ExceptionObserver):
+    """Entrypoint of the package."""
     __AUTH0_CLIENT_ID = 'hmWJcfhRouDOaJK2L8asREMlMrv3jFE1'
 
     __kraken_api: KrakenApi = None
@@ -111,6 +114,25 @@ class Spaceknow(ExceptionObserver):
     def __init__(self, credentials: Credentials):
         self.__credentials = credentials
 
+
+    def query_on(self, extent: GeoJSON, from_date: datetime, to_date: datetime) -> SpaceknowAction:
+        """Specifies arguments on which the query will be conducted. 
+        That happens in returned SpaceknowAction object.
+        """
+        self.__check_initiation()
+        sk_action = self.__sk_action_factory.create(extent, from_date, to_date)
+        sk_action.__add_observer__(self)
+        return sk_action
+
+    def __check_initiation(self):
+        if not self.__is_initiated():
+            self.__initiate()
+            self.__authenticate()
+
+    def __is_initiated(self) -> bool:
+        return None not in [self.__kraken_api, self.__ragnar_api] 
+
+
     def __initiate(self) -> None:
         self.__auth_service = AuthorizationService(self.__AUTH0_CLIENT_ID)
         self.__auth_session = AuthorizedSession()
@@ -118,8 +140,6 @@ class Spaceknow(ExceptionObserver):
         self.__ragnar_api = RagnarApi(self.__auth_session)
         self.__sk_action_factory = SpaceknowActionFactory(self.__ragnar_api, self.__kraken_api)
 
-    def __is_initiated(self) -> bool:
-        return None not in [self.__kraken_api, self.__ragnar_api] 
 
     def __authenticate(self) -> None:
         if self.__is_initiated():
@@ -127,16 +147,12 @@ class Spaceknow(ExceptionObserver):
             self.__auth_session.update_auth_token(auth_token)
 
 
-    def request_on(self, extent: GeoJSON, from_date: datetime, to_date: datetime) -> SpaceknowAction:
-        if not self.__is_initiated():
-            self.__initiate()
-            self.__authenticate()
-        sk_action = self.__sk_action_factory.create(extent, from_date, to_date)
-        sk_action.__add_observer__(self)
-        return sk_action
-
     def __notify__(self, ex: Exception):
-        raise ex
+        if isinstance(ex, AuthorizationException):
+            #TODO: Update authorization token.
+            assert False, 'Not implemented.'
+        else:
+            raise ex
 
 
 

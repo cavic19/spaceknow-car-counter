@@ -1,10 +1,10 @@
 from typing import Tuple
-from requests import Session, Response
-from spaceknow.errors import UnexpectedResponseException,ApiError, AuthorizationException, SpaceknowApiException,TaskingError, TaskingException
-from geojson import GeoJSON, feature
+from requests import Session
+from spaceknow.errors import UnexpectedResponseException, SpaceknowApiException,TaskingError, TaskingException
+from geojson import GeoJSON
 from datetime import datetime
-from spaceknow.models import Feature, KrakenAnalysis, TaskingStatus, GeoJSONExtentValidator, Tiles
-from typing import Callable, TypeVar
+from spaceknow.models import Feature, TaskingStatus, GeoJSONExtentValidator, Tiles
+from typing import Callable
 
 POST_METHOD = 'POST'
 GET_METHOD = 'GET'
@@ -177,6 +177,7 @@ class RagnarApi(SpaceknowApi):
 
 
 class KrakenApi(SpaceknowApi):
+    """The API interfaces imagery and analyses through tiled web map interface."""
     RELEASE_PATH = '/kraken/release'
     CARS_PATH = '/cars'
     IMAGERY_PATH = '/imagery'
@@ -190,12 +191,18 @@ class KrakenApi(SpaceknowApi):
     """/kraken/grid/<map_id>/-/<z>/<x>/<y>/detections.geojson"""
     
     def initiate_car_analysis(self, extent: GeoJSON, scene_id: str) -> KrakenTaskingObject:
-        return self.__initiate_analysis(extent,scene_id, self.CARS_PATH, KrakenAnalysis.CARS)
+        """[summary]
+
+        Args:
+            extent (GeoJSON): Are of concern
+            scene_id (str): Id of a chosen scene (satelite image)
+        """
+        return self.__initiate_analysis(extent,scene_id, self.CARS_PATH)
 
     def initiate_imagery_analysis(self, extent: GeoJSON, scene_id: str) -> KrakenTaskingObject:
-        return self.__initiate_analysis(extent, scene_id, self.IMAGERY_PATH, KrakenAnalysis.IMAGERY)
+        return self.__initiate_analysis(extent, scene_id, self.IMAGERY_PATH)
 
-    def __initiate_analysis(self, extent: GeoJSON, scene_id: str, middle_path: str, analysis_type: KrakenAnalysis) -> KrakenTaskingObject:
+    def __initiate_analysis(self, extent: GeoJSON, scene_id: str, middle_path: str) -> KrakenTaskingObject:
         self._extent_validator.validate(extent)
         body_json = {
             'sceneId': scene_id,
@@ -204,28 +211,29 @@ class KrakenApi(SpaceknowApi):
         endpoint = self.RELEASE_PATH + middle_path + self.INITITATE_ENDPOINT
         response = self.call(POST_METHOD, endpoint, body_json)
         pipeline_id = self._try_get('pipelineId', response)
-        return KrakenTaskingObject(self._session, pipeline_id, lambda: self.__retrieve_analysis(pipeline_id, middle_path,analysis_type))
+        return KrakenTaskingObject(self._session, pipeline_id, lambda: self.__retrieve_analysis(pipeline_id, middle_path))
 
 
-    def __retrieve_analysis(self, pipeline_id: str, middle_path: str, analysis_type: KrakenAnalysis) -> Tiles:
+    def __retrieve_analysis(self, pipeline_id: str, middle_path: str) -> Tiles:
         try:
             endpoint = self.RELEASE_PATH + middle_path + self.RETRIEVE_ENDPOINT
             body_json = {'pipelineId': pipeline_id}
             response = self.call(POST_METHOD, endpoint, body_json)
             map_id = self._try_get('mapId', response)
             tiles = self._try_get('tiles', response)
-            return Tiles(map_id, analysis_type, tiles)
+            return Tiles(map_id, tiles)
         except SpaceknowApiException as ex:
             if ex.error_type in [TaskingError.NON_EXISTENT_PIPELINE, TaskingError.PIPELINE_NOT_PROCESSED]:
                 raise TaskingException(ex.error_type, ex.error_message) from ex
             raise
     
 
-    def get_images(self, map_id: str, tile: Tuple[int, int, int]):
+    def get_images(self, map_id: str, tile: Tuple[int, int, int]) -> object:
         endpoint = self.GRID_IMAGERY %(map_id, tile[0], tile[1], tile[2])
         return self.call(GET_METHOD, endpoint, json_body=None)
 
     def get_detections(self, map_id: str, tile: Tuple[int,int,int]) -> list[Feature]:
+        """Retrieves cars analysis results caried out by 'inititate_cars_analysis' method."""
         endpoint = self.GRID_CARS %(map_id, tile[0], tile[1], tile[2])
         response = self.call(GET_METHOD, endpoint, json_body=None)
         return self.__parse_detections_to_list_of_features(response)
