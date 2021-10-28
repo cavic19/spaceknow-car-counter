@@ -50,7 +50,7 @@ class GeoJSONExtentValidator:
 class ExceptionObserver(ABC):
     """Reacts on exceptions raised by observable."""
     @abstractmethod
-    def __notify__(self, ex: Exception):
+    def __anounce_exception__(self, ex: Exception):
         pass
 
 
@@ -72,7 +72,7 @@ class Observable():
 
     def __notify_observers__(self, ex: Exception) -> None:
         for observer in self.__observers__:
-            observer.__notify__(ex)
+            observer.__anounce_exception__(ex)
 
 
 
