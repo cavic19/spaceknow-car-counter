@@ -25,7 +25,7 @@ testAirportPolygon = Polygon(
 startDateTime = datetime(2018,1,5,0,0,0)
 endDateTime = datetime(2018,1,8,0,0,0)
 
-sk = Spaceknow(Credentials(login,password))
+sk = Spaceknow(Credentials(login,password), print)
 count = sk.query_on(testAirportPolygon,startDateTime, endDateTime).count_cars()
 print(count)
 
