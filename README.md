@@ -44,3 +44,11 @@ The returned image object is of type `PIL.Image.Image` and may be therfore easil
 </p>
 
 ## Instalation
+To install required dependencies execute
+```
+pip install -r requirments.txt
+```
+to install the package execute
+```
+python setup.py install
+```
