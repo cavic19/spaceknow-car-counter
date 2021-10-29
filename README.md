@@ -1,5 +1,5 @@
 # Spaceknow Cars Analyser in Python
-This package written in Python encapsulates [SpaceKnow API](https://spaceknow.com/), as documented [here](https://docs.spaceknow.com), and provides a simple interface for performing analysis of car numbers of within desired area.
+This package written in Python encapsulates [SpaceKnow API](https://spaceknow.com/), as documented [here](https://docs.spaceknow.com), and provides a simple interface for performing analysis of car numbers within desired area.
 ## Key Features
 - Counts cars
 - Highlights cars and prints image
