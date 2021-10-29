@@ -1,6 +1,6 @@
-# VS code
-virt/
+example.py
 
+# VS code
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
