@@ -21,12 +21,12 @@ class SpaceknowAnalysis(Observable):
     def __init__(self,
      kraken_api: KrakenApi,
      tasking_manager: TaskingManager,
-     scene_ids: list[str],
+     sceneids_with_datetimes: list[tuple[datetime,str]],
      extent: GeoJSON):
         super().__init__()
         self.__kraken_api = kraken_api
         self.__tasking_manager = tasking_manager
-        self.__scene_ids = scene_ids
+        self.__sceneids_with_datetimess = sceneids_with_datetimes
         self.__extent = extent
 
     def _observe_exception(func):
@@ -42,11 +42,15 @@ class SpaceknowAnalysis(Observable):
     
 
     @_observe_exception
-    def get_images(self) -> list[Image]:
-        """Get image per scene. The image contains highlighted cars found in a given extent."""
+    def get_images(self) -> list[tuple[datetime, Image]]:
+        """Get image per scene. The image contains highlighted cars found in a given extent.
+        
+        Returns:
+            list[tuple[datetime, Image]]: Images alongside with date they were taken.
+        """
         output = []
-        for scene_id in self.__scene_ids:
-            output.append(self.__get_images_from_scene_id(scene_id))
+        for datetime, scene_id in self.__sceneids_with_datetimess:
+            output.append((datetime, self.__get_images_from_scene_id(scene_id)))
         return output
 
 
@@ -96,16 +100,14 @@ class SpaceknowAnalysis(Observable):
         return [[col[1] for col in row] for row in sorted_by_x_tile]
 
     @_observe_exception
-    def count_cars(self) -> int:
+    def get_car_counts(self) -> list[tuple[datetime, int]]:
         """Counts cars in a prespecified area.
 
         Returns:
-            int: Number of cars found within given extent (GeoJSON).
+            list[tuple[datetime, int]]: Number of cars found within given extent (GeoJSON) on paricilar date.
         """
-        car_count = 0
-        for scene_id in self.__scene_ids:
-            car_count += self.__cars_in_scene(scene_id)
-        return car_count
+        return [(sc[0], self.__cars_in_scene(sc[1])) for sc in self.__sceneids_with_datetimess]
+
 
     def __cars_in_scene(self, scene_id: str) -> int:    
         features = self.__get_cars_tiles_and_features(scene_id)[1]
@@ -155,10 +157,10 @@ class SpaceknowCarsAnalyser(ExceptionObserver):
             SpaceknowAnalysis: By means of this object the analysis is conducted
         """
         self.initialize()
-        scene_ids = self.__get_scene_ids(extent, from_date, to_date)
-        if len(scene_ids) == 0:
+        sceneids_with_datetimes = self.__get_scene_ids_with_datetimes(extent, from_date, to_date)
+        if len(sceneids_with_datetimes) == 0:
             raise NoEntriesException('No scene ids.')      
-        sk_analysis = self.__sk_analysis_factory.create(extent, scene_ids)
+        sk_analysis = self.__sk_analysis_factory.create(extent, sceneids_with_datetimes)
         sk_analysis.__add_observer__(self)
         return sk_analysis
 
@@ -171,7 +173,7 @@ class SpaceknowCarsAnalyser(ExceptionObserver):
         auth_token = self.__auth_service.request_jwt(self.__credentials)
         self.__auth_session.update_auth_token(auth_token)
 
-    def __get_scene_ids(self, extent: GeoJSON, from_date: datetime, to_date: datetime):       
+    def __get_scene_ids_with_datetimes(self, extent: GeoJSON, from_date: datetime, to_date: datetime) -> list[tuple[datetime,str]]:       
         ragnar_task_obj = self.__ragnar_api.initiate_search(
             extent,
             from_date,

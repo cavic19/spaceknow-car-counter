@@ -16,15 +16,15 @@ testAirportPolygon = Polygon(
     ])
 
 startDateTime = datetime(2018,1,5,0,0,0)
-endDateTime = datetime(2018,1,8,0,0,0)
+endDateTime = datetime(2018,1,30,0,0,0)
 
 sk = SpaceknowCarsAnalyser(username, password, print)
-query_obj = sk.analyse_on(testAirportPolygon,startDateTime, endDateTime)
-
-print(query_obj.count_cars())
-query_obj.get_images()[0].show()
+images_results = sk.analyse_on(testAirportPolygon,startDateTime, endDateTime).get_car_counts()
 
 
+for dm, counts in images_results:
+    print(dm)
+    print(counts)
 
 
 

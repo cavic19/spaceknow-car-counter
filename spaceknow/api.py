@@ -134,7 +134,7 @@ class RagnarApi(SpaceknowApi):
         to_date_time: datetime, 
         images_provider: str = 'gbdx', 
         dataset: str = 'idaho-pansharpened') -> TaskingObject:
-        """Initiates search for scenes intersecting with a given extent. Returned scenes are withing a given time period and are provided by a given provider and dataset.
+        """Initiates search for scenes intersecting with a given extent. Returned scenes are within a given time period and are provided by a given provider and dataset.
 
         Args:
             extent (GeoJSON): Desired area to obtain satelite images for.
@@ -175,8 +175,9 @@ class RagnarApi(SpaceknowApi):
         try:
             response = self._call(POST_METHOD, self.RETRIEVE_ENDPOINT,{'pipelineId': pipeline_id})
             results = response['results']
+            datetimes = [datetime.strptime(r['datetime'], self.TIME_FORMAT) for r in results]
             scenes = [r['sceneId'] for r in results ]
-            return scenes
+            return list(zip(datetimes,scenes))
         except SpaceknowApiException as ex:
             if ex.error_type in [TaskingError.NON_EXISTENT_PIPELINE, TaskingError.PIPELINE_NOT_PROCESSED]:
                 raise TaskingException(ex.error_type, ex.error_message) from ex
