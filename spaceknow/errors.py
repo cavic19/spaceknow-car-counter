@@ -40,6 +40,10 @@ class SpaceknowApiException(Exception):
         self.error_type = error_type
         self.error_message = error_message
 
+class NoEntriesException(Exception):
+    def __init__(self, msg: str) -> None:
+        super().__init__(f'No entries were found. {msg}.')
+
 class TaskingException(SpaceknowApiException):
     pass
 

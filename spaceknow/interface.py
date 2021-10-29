@@ -3,7 +3,7 @@ from typing import Callable, Tuple, Union
 
 from spaceknow.api import AuthorizedSession, KrakenApi, RagnarApi
 from spaceknow.authorization import AuthorizationService
-from spaceknow.errors import AuthorizationException
+from spaceknow.errors import AuthorizationException, NoEntriesException
 from spaceknow.models import Credentials, Feature, Observable, ExceptionObserver
 from spaceknow.control import TaskingManager
 from geojson import GeoJSON
@@ -156,6 +156,8 @@ class SpaceknowCarsAnalyser(ExceptionObserver):
         """
         self.initialize()
         scene_ids = self.__get_scene_ids(extent, from_date, to_date)
+        if len(scene_ids) == 0:
+            raise NoEntriesException('No scene ids.')      
         sk_analysis = self.__sk_analysis_factory.create(extent, scene_ids)
         sk_analysis.__add_observer__(self)
         return sk_analysis
