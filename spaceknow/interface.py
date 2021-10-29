@@ -31,11 +31,17 @@ class SpaceknowAnalysis(Observable):
 
     def _observe_exception(func):
         """In special cases redirects exception to observers (i.e. AuthorizationException)."""
+        was_called_before = False
         def wrapper(self):
+            nonlocal was_called_before
             try:
                 return func(self)
             except AuthorizationException as ex:
+                if was_called_before:
+                    raise
                 self.__notify_observers__(ex)
+                was_called_before = True
+                return func(self)
             finally:
                 self.__remove_all_observers__()
         return wrapper
@@ -182,7 +188,6 @@ class SpaceknowCarsAnalyser(ExceptionObserver):
 
     def __anounce_exception__(self, ex: Exception):
         if isinstance(ex, AuthorizationException):
-            #TODO: Updates authorization token.
-            assert False, 'Not implemented.'
+            self.__authenticate()
         else:
             raise ex
