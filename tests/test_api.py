@@ -2,6 +2,7 @@ from datetime import datetime
 from unittest .mock import patch
 import random
 from requests.models import Response
+import spaceknow
 from spaceknow.api import AuthorizedSession, RagnarApi, SpaceknowApi, TaskingObject, TaskingStatus
 from requests.utils import default_headers
 import unittest 
@@ -47,7 +48,7 @@ class TestSpaceknowApi(unittest.TestCase):
         spaceknowApi = SpaceknowApi(session)
         expected = json.loads(self.VALID_RESPONSE_BODY)
         
-        actual = spaceknowApi.call('POST','/endpoint', {'test': '123456'})
+        actual = spaceknowApi._call('POST','/endpoint', {'test': '123456'})
         
         self.assertDictEqual(expected, actual)
 
@@ -57,7 +58,7 @@ class TestSpaceknowApi(unittest.TestCase):
         spaceknowApi = SpaceknowApi(session)
 
         with self.assertRaises(SpaceknowApiException) as ctx:
-            spaceknowApi.call('POST','/endpoint', {'test': '123456'})
+            spaceknowApi._call('POST','/endpoint', {'test': '123456'})
         expected_error_type = ctx.exception.error_type
         actual_error_type = json.loads(self.AUTH_ERROR_RESPONSE_BODY)['error']
         
@@ -69,7 +70,7 @@ class TestSpaceknowApi(unittest.TestCase):
         spaceknowApi = SpaceknowApi(session)
         
         with self.assertRaises(UnexpectedResponseException) as ctx:
-            spaceknowApi.call('POST', '/endpoint', {'test': '123456'})
+            spaceknowApi._call('POST', '/endpoint', {'test': '123456'})
         
         expected_response = self.INVALID_RESPONSE_BODY
         actual_response = ctx.exception.actual_response
@@ -86,7 +87,7 @@ class TestTaskingObject(unittest.TestCase):
             'nextTry': str(random.randint(1, 15))
         }
    
-    @patch('spaceknow.api.SpaceknowApi.call', mocked_call_valid_response)
+    @patch('spaceknow.api.SpaceknowApi._call', mocked_call_valid_response)
     def test_get_status_valid_response(self):
         session = AuthorizedSession('someToken')
         task_object = TaskingObject(session, self.PIPELINE_ID, None)
@@ -151,7 +152,7 @@ class TestRagnarApi(unittest.TestCase):
         expectedResponse = json.loads(self.VALID_RETRIEVE_RESPONSE)['results'][0]
         
         
-        expectedResult = [expectedResponse['sceneId']]
+        expectedResult = [(datetime.strptime(expectedResponse['datetime'], ragnar.TIME_FORMAT), expectedResponse['sceneId'])]
         actualResult = ragnar.retrieve_results('valid-pipeline-id')
 
         self.assertListEqual(expectedResult, actualResult)

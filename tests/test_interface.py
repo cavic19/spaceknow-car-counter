@@ -3,8 +3,8 @@ import unittest
 from unittest.mock import patch
 from spaceknow.api import KrakenApi
 from spaceknow.control import TaskingManager
+from spaceknow.errors import AuthorizationException
 from spaceknow.interface import SpaceknowAnalysis
-from spaceknow.models import Tiles
 from PIL.Image import Image
 
 class TestSpaceknowAnalysis(unittest.TestCase):
@@ -18,8 +18,7 @@ class TestSpaceknowAnalysis(unittest.TestCase):
 
     def test_build_layout(self):
         sk_analysis = SpaceknowAnalysis(None,None,None,None)
-        test_map_id = '123456789'
-        test_tiles = Tiles(test_map_id)
+        test_tiles = []
         test_images = []
 
         test_tiles.append((16, 24, 57))
@@ -57,18 +56,8 @@ class TestSpaceknowAnalysis(unittest.TestCase):
 
         self.assertListEqual(expected, actual)
 
-    # def test_count_cars(self):
-    #     sk_analysis = SpaceknowAnalysis(
-    #         kraken_api=None,
-    #         tasking_manager=TaskingManager(),
-    #         scene_ids=None,
-    #         extent=None)
-    #     retrieved_tiles = {}
-    #     features = []
 
-    #     with patch('spaceknow.control.TaskingManager.wait_untill_completed', lambda s,x: retrieved_tiles):
-    #         with patch('spaceknow.api.KrakenApi.get_detections', lambda s: features):
-    #             pass
+        
 
 
 
