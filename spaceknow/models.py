@@ -1,8 +1,7 @@
-from abc import ABC, abstractproperty, abstractmethod
+from abc import ABC, abstractmethod
 from geojson import GeoJSON
 from enum import Enum, auto
 from area import area
-from collections import MutableSequence
 from dataclasses import dataclass
 from geojson import GeoJSON, Polygon
 

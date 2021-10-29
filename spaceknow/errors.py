@@ -1,6 +1,3 @@
-from enum import Enum, auto
-from requests import Response
-
 class ApiError():   
     NOT_AUTHORIZED = 'NOT_AUTHORIZED'
     """The request is either not properly authorized or you do not have sufficient permissions"""
